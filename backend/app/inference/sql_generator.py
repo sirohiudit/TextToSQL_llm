@@ -72,11 +72,23 @@ SQL Query:
                 pad_token_id=self.tokenizer.eos_token_id
             )
 
+        generated_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+
         generated_text = self.tokenizer.decode(
-           outputs[0],
+           generated_tokens,
            skip_special_tokens=True
-       )
+      )  
 
-        sql = generated_text.split("SQL Query:")[-1].strip()
+# Remove markdown blocks
+        generated_text = generated_text.replace("```sql", "")
+        generated_text = generated_text.replace("```", "")
 
-        return sql
+        generated_text = generated_text.strip()
+
+# Keep only first SQL statement
+        if ";" in generated_text:
+          sql = generated_text.split(";")[0] + ";"
+        else:
+          sql = generated_text
+
+        return sql.strip()
