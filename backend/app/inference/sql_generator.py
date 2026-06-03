@@ -27,12 +27,36 @@ class SQLGenerator:
 
         print("Model loaded successfully!")
 
-    def build_prompt(self, schema: str, question: str):
+    def build_prompt(self, schema: str, question: str, conversation_history=None):
+        conversation_context = ""
+
+        if conversation_history:
+
+         for item in conversation_history[-3:]:
+
+             conversation_context += f"""
+
+        Previous Question:
+        {item['question']}
+
+        Previous SQL:
+        {item['sql']}
+       """
 
         prompt = f"""
-You are an expert SQL generator.
+You are an expert SQLite SQL generator.
 
-Generate ONLY a valid SQL query.
+Your task is to generate ONLY valid SQLite SQL queries.
+
+STRICT RULES:
+1. Output ONLY SQL
+2. Do NOT explain anything
+3. Do NOT use markdown
+4. Do NOT generate multiple queries
+5. Use only tables and columns from schema
+6. Prefer explicit JOINs
+7. Use proper aggregation when needed
+8. Generate syntactically correct SQLite SQL
 
 Database Schema:
 {schema}
@@ -45,11 +69,12 @@ SQL Query:
 
         return prompt
 
-    def generate_sql(self, schema: str, question: str):
+    def generate_sql(self, schema: str, question: str, conversation_history=None):
 
         prompt = self.build_prompt(
             schema,
-            question
+            question,
+            conversation_history
         )
 
         inputs = self.tokenizer(

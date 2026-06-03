@@ -1,6 +1,13 @@
 from backend.app.inference.sql_generator import SQLGenerator
-from backend.database.schema_extractor import SchemaExtractor
-from backend.database.query_executor import QueryExecutor
+from backend.app.security.sql_validator import SQLValidator
+
+from backend.database.universal_schema_extractor import (
+    UniversalSchemaExtractor
+)
+
+from backend.database.universal_query_executor import (
+    UniversalQueryExecutor
+)
 
 
 class TextToSQLPipeline:
@@ -9,21 +16,27 @@ class TextToSQLPipeline:
 
         print("Initializing Text-to-SQL Pipeline...")
 
-        self.schema_extractor = SchemaExtractor()
-
         self.sql_generator = SQLGenerator()
 
-        self.query_executor = QueryExecutor()
+        self.conversation_history = []
 
         print("Pipeline initialized successfully!")
 
-    def run(self, question: str):
+    def run(
+        self,
+        question: str,
+        engine
+    ):
 
         # =========================
         # STEP 1 — EXTRACT SCHEMA
         # =========================
 
-        schema = self.schema_extractor.get_schema()
+        schema_extractor = UniversalSchemaExtractor(
+            engine
+        )
+
+        schema = schema_extractor.get_schema()
 
         # =========================
         # STEP 2 — GENERATE SQL
@@ -31,16 +44,49 @@ class TextToSQLPipeline:
 
         sql_query = self.sql_generator.generate_sql(
             schema=schema,
-            question=question
+            question=question,
+            conversation_history=self.conversation_history
         )
 
         # =========================
-        # STEP 3 — EXECUTE SQL
+        # STEP 3 — VALIDATE SQL
         # =========================
 
-        execution_result = self.query_executor.execute_query(
+        validation = SQLValidator.validate(
             sql_query
         )
+
+        if not validation["safe"]:
+
+            return {
+                "question": question,
+                "generated_sql": sql_query,
+                "execution_result": {
+                    "success": False,
+                    "error": validation["reason"]
+                }
+            }
+
+        # =========================
+        # STEP 4 — EXECUTE SQL
+        # =========================
+
+        query_executor = UniversalQueryExecutor(
+            engine
+        )
+
+        execution_result = query_executor.execute_query(
+            sql_query
+        )
+
+        # =========================
+        # STEP 5 — UPDATE MEMORY
+        # =========================
+
+        self.conversation_history.append({
+            "question": question,
+            "sql": sql_query
+        })
 
         # =========================
         # FINAL RESPONSE
@@ -52,8 +98,3 @@ class TextToSQLPipeline:
             "execution_result": execution_result
         }
 
-    def close(self):
-
-        self.schema_extractor.close()
-
-        self.query_executor.close()
