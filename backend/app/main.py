@@ -22,6 +22,7 @@ pipeline = TextToSQLPipeline()
 db_manager = DatabaseManager()
 
 current_engine = None
+current_db_type = None
 # =====================================
 # REQUEST MODEL
 # =====================================
@@ -51,8 +52,9 @@ def root():
 def ask_question(request: QueryRequest):
 
     global current_engine
+    global current_db_type
 
-    if current_engine is None:
+    if current_engine is None or current_db_type is None:
 
         return {
             "success": False,
@@ -61,7 +63,8 @@ def ask_question(request: QueryRequest):
 
     response = pipeline.run(
         request.question,
-        current_engine
+        current_engine,
+        database_type= current_db_type
     )
 
     return response
@@ -70,6 +73,7 @@ def ask_question(request: QueryRequest):
 def upload_sqlite_db(file: UploadFile = File(...)):
 
     global current_engine
+    global current_db_type
 
     uploads_dir = Path("uploads")
 
@@ -90,6 +94,7 @@ def upload_sqlite_db(file: UploadFile = File(...)):
     )
 
     current_engine = db_manager.get_engine()
+    current_db_type = "SQLite"
 
     return {
         "success": True,
@@ -100,6 +105,7 @@ def upload_sqlite_db(file: UploadFile = File(...)):
 def upload_csv_file(file: UploadFile = File(...)):
 
     global current_engine
+    global current_db_type
 
     uploads_dir = Path("uploads")
 
@@ -119,7 +125,7 @@ def upload_csv_file(file: UploadFile = File(...)):
     )
 
     current_engine = db_manager.get_engine()
-
+    current_db_type = "SQLite"
     return {
         "success": True,
         "message": f"CSV uploaded: {file.filename}"
@@ -139,6 +145,7 @@ def connect_postgresql(
 ):
 
     global current_engine
+    global current_db_type
 
     db_manager.connect_postgresql(
         host=request.host,
@@ -149,6 +156,7 @@ def connect_postgresql(
     )
 
     current_engine = db_manager.get_engine()
+    current_db_type = "PostgreSQL"
 
     return {
         "success": True,
@@ -169,6 +177,7 @@ def connect_mysql(
 ):
 
     global current_engine
+    global current_db_type
 
     db_manager.connect_mysql(
         host=request.host,
@@ -179,6 +188,7 @@ def connect_mysql(
     )
 
     current_engine = db_manager.get_engine()
+    current_db_type = "MySQL"
 
     return {
         "success": True,

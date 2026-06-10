@@ -80,3 +80,16 @@ cython_debug/
 venv/
 ENV/
 env/
+
+# Raw datasets
+training/data/raw/
+training/data/processed/
+
+# Training outputs
+training/outputs/
+
+# Uploads
+uploads/
+
+# Python cache
+*.pyc

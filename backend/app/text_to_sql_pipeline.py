@@ -8,6 +8,9 @@ from backend.database.universal_schema_extractor import (
 from backend.database.universal_query_executor import (
     UniversalQueryExecutor
 )
+from backend.database.sql_dialect_converter import (
+    SQLDialectConverter
+)
 
 
 class TextToSQLPipeline:
@@ -25,7 +28,8 @@ class TextToSQLPipeline:
     def run(
         self,
         question: str,
-        engine
+        engine,
+        database_type
     ):
 
         # =========================
@@ -42,10 +46,15 @@ class TextToSQLPipeline:
         # STEP 2 — GENERATE SQL
         # =========================
 
-        sql_query = self.sql_generator.generate_sql(
+        canonical_sql = self.sql_generator.generate_sql(
             schema=schema,
             question=question,
+            database_type="SQLite",
             conversation_history=self.conversation_history
+        )
+        sql_query = SQLDialectConverter.convert(
+            canonical_sql,
+            database_type
         )
 
         # =========================
@@ -94,6 +103,8 @@ class TextToSQLPipeline:
 
         return {
             "question": question,
+            "database_type": database_type,
+            "canonical_sql": canonical_sql,
             "generated_sql": sql_query,
             "execution_result": execution_result
         }
