@@ -1,5 +1,6 @@
 from unsloth import FastLanguageModel
 import torch
+from backend.app.inference.query_repair import QueryRepair
 
 MODEL_PATH = "training/outputs/qwen_sql_model_v2"
 
@@ -136,17 +137,75 @@ SQL Query:
            generated_tokens,
            skip_special_tokens=True
       )  
+    
 
-# Remove markdown blocks
+        # Remove markdown blocks
         generated_text = generated_text.replace("```sql", "")
         generated_text = generated_text.replace("```", "")
 
         generated_text = generated_text.strip()
 
-# Keep only first SQL statement
+        # Keep only first SQL statement
         if ";" in generated_text:
           sql = generated_text.split(";")[0] + ";"
         else:
           sql = generated_text
 
         return sql.strip()
+    
+    def repair_sql(
+          self,
+         question,
+         failed_sql,
+         error_message,
+         schema
+        ):
+
+        prompt = QueryRepair.build_prompt(
+              question,
+              failed_sql,
+              error_message,
+              schema
+            )
+
+        inputs = self.tokenizer(
+               prompt,
+             return_tensors="pt"
+             ).to("cuda")
+
+        outputs = self.model.generate(
+               **inputs,
+             max_new_tokens=128,
+             do_sample=False,
+             temperature=0.0,
+             pad_token_id=self.tokenizer.eos_token_id
+            )
+        
+        generated_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+
+        repaired_sql = self.tokenizer.decode(
+                generated_tokens,
+              skip_special_tokens=True
+             )
+        repaired_sql = repaired_sql.replace(
+               "```sql",
+               ""
+            )
+
+        repaired_sql = repaired_sql.replace(
+              "```",
+             ""
+           )
+
+        repaired_sql = repaired_sql.strip()
+
+        if ";" in repaired_sql:
+             repaired_sql = (
+                  repaired_sql.split(";")[0] + ";"
+                )
+
+        repaired_sql = repaired_sql.split(
+                "Correct SQL:"
+             )[-1].strip()
+
+        return repaired_sql

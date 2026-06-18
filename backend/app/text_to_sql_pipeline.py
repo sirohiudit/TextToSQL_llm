@@ -11,6 +11,12 @@ from backend.database.universal_query_executor import (
 from backend.database.sql_dialect_converter import (
     SQLDialectConverter
 )
+from backend.app.cache.schema_cache import (
+    SchemaCache
+)
+from backend.app.cache.prompt_cache import (
+    PromptCache
+)
 
 
 class TextToSQLPipeline:
@@ -21,42 +27,81 @@ class TextToSQLPipeline:
 
         self.sql_generator = SQLGenerator()
 
-        self.conversation_history = []
-
         print("Pipeline initialized successfully!")
 
     def run(
         self,
         question: str,
         engine,
-        database_type
+        database_type,
+        conversation_history=None
     ):
-
+        if conversation_history is None:
+            conversation_history = []
         # =========================
         # STEP 1 — EXTRACT SCHEMA
         # =========================
 
-        schema_extractor = UniversalSchemaExtractor(
-            engine
+        schema_key = SchemaCache.create_key(
+          database_type,
+         str(engine.url)
         )
 
-        schema = schema_extractor.get_schema()
+        schema = SchemaCache.get(
+          schema_key
+        )
+
+        if schema is None:
+
+         schema_extractor = (UniversalSchemaExtractor(engine )  )
+
+         schema = (schema_extractor.get_schema())
+
+         SchemaCache.set(
+             schema_key,
+             schema
+            )
 
         # =========================
         # STEP 2 — GENERATE SQL
         # =========================
 
-        canonical_sql = self.sql_generator.generate_sql(
-            schema=schema,
-            question=question,
-            database_type="SQLite",
-            conversation_history=self.conversation_history
-        )
-        sql_query = SQLDialectConverter.convert(
-            canonical_sql,
-            database_type
+        prompt_key = PromptCache.create_key(
+           question,
+           schema
         )
 
+        cached = PromptCache.get(
+           prompt_key
+        )
+
+        if cached:
+
+          canonical_sql = cached[
+              "canonical_sql"
+            ]
+
+        else:
+
+          canonical_sql = (
+             self.sql_generator.generate_sql(
+                 schema=schema,
+                 question=question,
+                 database_type="SQLite",
+                  conversation_history=conversation_history
+                )
+            )
+
+          PromptCache.set(
+              prompt_key,
+              {
+              "canonical_sql": canonical_sql
+              }
+            )
+        sql_query = SQLDialectConverter.convert(
+             canonical_sql,
+             database_type
+            )
         # =========================
         # STEP 3 — VALIDATE SQL
         # =========================
@@ -70,6 +115,7 @@ class TextToSQLPipeline:
             return {
                 "question": question,
                 "generated_sql": sql_query,
+                "conversation_history": conversation_history,
                 "execution_result": {
                     "success": False,
                     "error": validation["reason"]
@@ -88,14 +134,58 @@ class TextToSQLPipeline:
             sql_query
         )
 
+        # ===================================
+        # QUERY REPAIR
+        # ===================================
+
+        if not execution_result["success"]:
+
+           try:
+
+              repaired_sql = self.sql_generator.repair_sql(
+              question=question,
+              failed_sql=sql_query,
+              error_message=execution_result["error"],
+              schema=schema
+           )
+
+              repair_validation = SQLValidator.validate(
+                  repaired_sql
+                )
+
+              if repair_validation["safe"]:
+
+                  repaired_result = query_executor.execute_query(
+                     repaired_sql
+                    )
+
+                  if repaired_result["success"]:
+
+                     sql_query = repaired_sql
+
+                     execution_result = repaired_result
+
+           except Exception as e:
+
+               print(
+                  "Repair failed:",
+                 str(e)
+                )
+
+
+
         # =========================
         # STEP 5 — UPDATE MEMORY
         # =========================
+        updated_history = conversation_history.copy()
 
-        self.conversation_history.append({
-            "question": question,
-            "sql": sql_query
-        })
+        updated_history.append(
+            {
+                "question": question,
+                "sql": sql_query
+            }
+        )
+        updated_history = updated_history[-20:]
 
         # =========================
         # FINAL RESPONSE
@@ -106,6 +196,8 @@ class TextToSQLPipeline:
             "database_type": database_type,
             "canonical_sql": canonical_sql,
             "generated_sql": sql_query,
-            "execution_result": execution_result
+            "conversation_history": updated_history,
+            "execution_result": execution_result,
+            "query_repaired": ( execution_result["success"] and sql_query != canonical_sql )
         }
 

@@ -2,96 +2,68 @@ import sqlite3
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "ecommerce.db"
+DB_PATH = BASE_DIR / "user_data" / "auth.db"
 
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
-# Enable foreign keys
-cursor.execute("PRAGMA foreign_keys = ON;")
+# Create users table
 
-
-# =========================
-# CUSTOMERS
-# =========================
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS customers (
-    customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    first_name TEXT,
-    last_name TEXT,
-    email TEXT UNIQUE,
-    city TEXT,
-    country TEXT,
-    signup_date DATE
-);
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
 """)
 
+# Create sessions table
 
-# =========================
-# PRODUCTS
-# =========================
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS products (
-    product_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_name TEXT,
-    category TEXT,
-    price REAL,
-    stock_quantity INTEGER
-);
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+
+    db_type TEXT,
+    db_config TEXT,
+
+    conversation_history TEXT DEFAULT '[]',
+                                
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+)
 """)
 
+# Create query_logs table
 
-# =========================
-# ORDERS
-# =========================
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS orders (
-    order_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER,
-    order_date DATE,
-    total_amount REAL,
+CREATE TABLE IF NOT EXISTS query_history(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    FOREIGN KEY(customer_id)
-    REFERENCES customers(customer_id)
-);
+    user_id INTEGER NOT NULL,
+    session_id INTEGER NOT NULL,
+
+    question TEXT,
+    generated_sql TEXT,
+
+    database_type TEXT,
+
+    execution_time REAL,
+
+    success INTEGER,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY(user_id)
+        REFERENCES users(id),
+
+    FOREIGN KEY(session_id)
+        REFERENCES sessions(id)
+)
 """)
 
-
-# =========================
-# ORDER ITEMS
-# =========================
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS order_items (
-    order_item_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER,
-    product_id INTEGER,
-    quantity INTEGER,
-    subtotal REAL,
-
-    FOREIGN KEY(order_id)
-    REFERENCES orders(order_id),
-
-    FOREIGN KEY(product_id)
-    REFERENCES products(product_id)
-);
-""")
-
-
-# =========================
-# EMPLOYEES
-# =========================
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS employees (
-    employee_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    first_name TEXT,
-    last_name TEXT,
-    department TEXT,
-    salary REAL,
-    hire_date DATE
-);
-""")
 
 conn.commit()
 conn.close()
-
-print("Database + tables created successfully!")
