@@ -1,30 +1,14 @@
-from fastapi import (
-    FastAPI,
-    Depends,
-)
-
+from fastapi import (FastAPI, Depends, HTTPException, UploadFile, File)
 from pydantic import BaseModel
-from fastapi import UploadFile, File
 import shutil
 import time
 from pathlib import Path
-import sqlite3
-
+from sqlalchemy import text
+from backend.database.auth_db import engine
 from backend.app.cache.schema_cache import SchemaCache
-from backend.app.security.authentication.auth import (
-    hash_password,
-    verify_password,
-    create_access_token
-)
-
-from backend.app.security.authentication.models import (
-    TokenResponse,
-    UserCreate,
-    UserLogin
-)
-from backend.app.security.authentication.dependencies import (
-    get_current_user
-)
+from backend.app.security.authentication.auth import (hash_password, verify_password, create_access_token)
+from backend.app.security.authentication.models import (TokenResponse, UserCreate, UserLogin)
+from backend.app.security.authentication.dependencies import (get_current_user)
 from backend.app.security.authentication.query_history_manager import QueryHistoryManager
 from backend.app.security.authentication.session_manager import SessionManager
 from backend.database.database_manager import DatabaseManager
@@ -53,11 +37,10 @@ except Exception as e:
 # =====================================
 
 pipeline = TextToSQLPipeline()
-DB_PATH = r"C:\projects\Text_to_SQL_llm\backend\database\user_data\auth.db"
+
 # =====================================
 # REQUEST MODEL
 # =====================================
-
 class QueryRequest(BaseModel):
 
     session_id: int
@@ -121,37 +104,31 @@ def root():
 
 @app.post("/signup")
 def signup(user: UserCreate):
+    
+    with engine.begin() as conn:
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+        existing = conn.execute(text("""
+                                     
+         SELECT id FROM users WHERE email=:email
+         """),
+         {"email": user.email}
+         ).fetchone()
+    
+        if existing:
+           raise HTTPException(status_code=400, detail="Emaill already exists")
 
-    existing = cursor.execute(
-        "SELECT id FROM users WHERE email=?",
-        (user.email,)
-    ).fetchone()
+        hashed = hash_password(user.password)
 
-    if existing:
-        return {"error": "Email already exists"}
-
-    hashed = hash_password(user.password)
-
-    cursor.execute(
-        """
-        INSERT INTO users(email,password_hash)
-        VALUES (?,?)
-        """,
-        (user.email, hashed)
-    )
-
-    conn.commit()
-
-    user_id = cursor.lastrowid
-
-    if user_id is None:
-        conn.close()
-        return {"error": "Failed to create user."}
-
-    conn.close()
+        result = conn.execute(text("""
+          INSERT INTO users(email,password_hash)
+          VALUES (:email, :password_hash) RETURNING id
+         """), {"email": user.email,
+                "password_hash": hashed}
+        )
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+        user_id = row[0]
 
     token = create_access_token(user_id)
 
@@ -166,37 +143,37 @@ def signup(user: UserCreate):
 @app.post("/login")
 def login(user: UserLogin):
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    with engine.begin() as conn:
 
-    row = cursor.execute(
-        """
-        SELECT id,password_hash
-        FROM users
-        WHERE email=?
-        """,
-        (user.email,)
-    ).fetchone()
+        row = conn.execute(
+            text("""
+                SELECT
+                    id,
+                    password_hash
+                FROM users
+                WHERE email = :email
+            """),
+            {
+                "email": user.email
+            }
+        ).fetchone()
+        if row is None:
+              raise HTTPException(status_code=401,detail="Invalid credentials")
+        
+        user_id = row[0]
+        password_hash = row[1]
 
-    conn.close()
+        if not verify_password(
+             user.password,
+             password_hash
+        ):
+          raise HTTPException(status_code=401,detail="Invalid credentials")
 
-    if not row:
-        return {"error": "Invalid credentials"}
+        token = create_access_token(user_id)
 
-    user_id = row[0]
-    password_hash = row[1]
-
-    if not verify_password(
-        user.password,
-        password_hash
-    ):
-        return {"error": "Invalid credentials"}
-
-    token = create_access_token(user_id)
-
-    return TokenResponse(
-        access_token=token
-    )
+        return TokenResponse(
+          access_token=token
+        )
 
 # =====================================
 # ASK ENDPOINT

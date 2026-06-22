@@ -1,69 +1,59 @@
-import sqlite3
-from pathlib import Path
+from sqlalchemy import text
+from backend.database.auth_db import engine
 
-BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "user_data" / "auth.db"
+with engine.begin() as conn:
 
-conn = sqlite3.connect(DB_PATH)
-cursor = conn.cursor()
+ conn.execute(text("""
+     CREATE TABLE IF NOT EXISTS users (
+         id SERIAL PRIMARY KEY ,
+         email VARCHAR(255) UNIQUE NOT NULL,
+         password_hash TEXT NOT NULL,
+         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+  """))
 
-# Create users table
+ # Create sessions table
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
+ conn.execute(text("""
+     CREATE TABLE IF NOT EXISTS sessions (
+          id SERIAL PRIMARY KEY ,
+          user_id INTEGER REFERENCES users(id),
+          db_type VARCHAR(50),
+          db_config TEXT,
+          conversation_history TEXT DEFAULT '[]',                        
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+   """))
 
-# Create sessions table
+ # Create query_logs table
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
+ conn.execute(text("""
+     CREATE TABLE IF NOT EXISTS query_history(
+         id SERIAL PRIMARY KEY,
+         user_id INTEGER REFERENCES users(id),
+         session_id INTEGER REFERENCES sessions(id),
+         question TEXT,
+         generated_sql TEXT,
+         database_type VARCHAR(50),
+         execution_time FLOAT,
+         success BOOLEAN,
+         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+  """))
+ 
+ conn.execute(text("""
+     CREATE INDEX IF NOT EXISTS idx_sessions_user
+     ON sessions(user_id);
+   """))
 
-    db_type TEXT,
-    db_config TEXT,
+ conn.execute(text("""
+     CREATE INDEX IF NOT EXISTS idx_history_user
+     ON query_history(user_id);
+    """))
 
-    conversation_history TEXT DEFAULT '[]',
-                                
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id)
-)
-""")
+ conn.execute(text("""
+     CREATE INDEX IF NOT EXISTS idx_history_session
+     ON query_history(session_id);
+    """))
 
-# Create query_logs table
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS query_history(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    user_id INTEGER NOT NULL,
-    session_id INTEGER NOT NULL,
-
-    question TEXT,
-    generated_sql TEXT,
-
-    database_type TEXT,
-
-    execution_time REAL,
-
-    success INTEGER,
-
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY(user_id)
-        REFERENCES users(id),
-
-    FOREIGN KEY(session_id)
-        REFERENCES sessions(id)
-)
-""")
-
-
-conn.commit()
-conn.close()

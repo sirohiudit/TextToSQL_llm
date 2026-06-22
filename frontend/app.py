@@ -1,8 +1,15 @@
 import streamlit as st
 import requests
 import pandas as pd
+import os
+from dotenv import load_dotenv, find_dotenv
 
-API_URL = "http://127.0.0.1:8000"
+
+dotenv_path= find_dotenv()
+load_dotenv(dotenv_path)
+
+API_URL = os.getenv("FASTAPI_URL")
+print(API_URL)
 
 def get_headers():
 

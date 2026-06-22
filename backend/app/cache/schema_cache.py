@@ -1,6 +1,6 @@
 import hashlib
 
-from .redis_client import redis_client
+from backend.app.cache.redis_client import redis_client
 
 
 class SchemaCache:

@@ -1,6 +1,6 @@
-import sqlite3
+from sqlalchemy import text
 
-DB_PATH = r"C:\projects\Text_to_SQL_llm\backend\database\user_data\auth.db"
+from backend.database.auth_db import engine
 
 
 class QueryHistoryManager:
@@ -16,60 +16,102 @@ class QueryHistoryManager:
         success
     ):
 
-        conn = sqlite3.connect(DB_PATH)
+        with engine.begin() as conn:
 
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO query_history(
-                user_id,
-                session_id,
-                question,
-                generated_sql,
-                database_type,
-                execution_time,
-                success
+            conn.execute(
+                text("""
+                    INSERT INTO query_history(
+                        user_id,
+                        session_id,
+                        question,
+                        generated_sql,
+                        database_type,
+                        execution_time,
+                        success
+                    )
+                    VALUES(
+                        :user_id,
+                        :session_id,
+                        :question,
+                        :generated_sql,
+                        :database_type,
+                        :execution_time,
+                        :success
+                    )
+                """),
+                {
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "question": question,
+                    "generated_sql": generated_sql,
+                    "database_type": database_type,
+                    "execution_time": execution_time,
+                    "success": success
+                }
             )
-            VALUES(?,?,?,?,?,?,?)
-            """,
-            (
-                user_id,
-                session_id,
-                question,
-                generated_sql,
-                database_type,
-                execution_time,
-                int(success)
-            )
-        )
-
-        conn.commit()
-
-        conn.close()
 
     @staticmethod
     def get_user_history(
         user_id
     ):
 
-        conn = sqlite3.connect(DB_PATH)
+        with engine.begin() as conn:
 
-        conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                text("""
+                    SELECT *
+                    FROM query_history
+                    WHERE user_id = :user_id
+                    ORDER BY created_at DESC
+                    LIMIT 100
+                """),
+                {
+                    "user_id": user_id
+                }
+            ).mappings().all()
 
-        cursor = conn.cursor()
+        return [
+            dict(row)
+            for row in rows
+        ]
 
-        rows = cursor.execute(
-            """
-            SELECT *
-            FROM query_history
-            WHERE user_id=?
-            ORDER BY created_at DESC
-            LIMIT 100
-            """,
-            (user_id,)
-        ).fetchall()
+    @staticmethod
+    def get_session_history(
+        session_id
+    ):
 
-        conn.close()
+        with engine.begin() as conn:
 
-        return [dict(row) for row in rows]
+            rows = conn.execute(
+                text("""
+                    SELECT *
+                    FROM query_history
+                    WHERE session_id = :session_id
+                    ORDER BY created_at DESC
+                """),
+                {
+                    "session_id": session_id
+                }
+            ).mappings().all()
+
+        return [
+            dict(row)
+            for row in rows
+        ]
+
+    @staticmethod
+    def delete_history(
+        user_id
+    ):
+
+        with engine.begin() as conn:
+
+            conn.execute(
+                text("""
+                    DELETE FROM query_history
+                    WHERE user_id = :user_id
+                """),
+                {
+                    "user_id": user_id
+                }
+            )

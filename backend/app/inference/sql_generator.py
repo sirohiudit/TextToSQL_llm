@@ -1,9 +1,14 @@
 from unsloth import FastLanguageModel
 import torch
 from backend.app.inference.query_repair import QueryRepair
+import os
+from dotenv import find_dotenv, load_dotenv
 
-MODEL_PATH = "training/outputs/qwen_sql_model_v2"
 
+dotenv_path = find_dotenv()
+load_dotenv(dotenv_path)
+
+MODEL_PATH = os.getenv("MODEL_PATH")
 
 class SQLGenerator:
 
@@ -117,7 +122,7 @@ SQL Query:
         )
 
         inputs = {
-            k: v.to("cuda")
+            k: v.to("cuda" if torch.cuda.is_available() else "cpu")
             for k, v in inputs.items()
         }
 
@@ -171,7 +176,7 @@ SQL Query:
         inputs = self.tokenizer(
                prompt,
              return_tensors="pt"
-             ).to("cuda")
+             ).to("cuda" if torch.cuda.is_available() else "cpu")
 
         outputs = self.model.generate(
                **inputs,
